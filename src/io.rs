@@ -1,13 +1,14 @@
+use indexmap::IndexSet;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::Write;
 
 use super::coordinates::Coordinates;
-use super::polygon::PolygonalPath;
+use super::path::Path;
+use super::polygon::Polygon;
 
 /// Different kind of input lines from the expected dataset.
 #[derive(Debug, Clone, Copy)]
@@ -102,7 +103,7 @@ impl GeoJson {
         lines
     }
 
-    pub fn save(&self, polygons: &HashSet<PolygonalPath>, directory: &str) {
+    pub fn save(&self, polygons: &Vec<Polygon<'_>>, directory: &str) {
         // creates the geojson features even considering invalid lines to have a full output
         let features = polygons
             .iter()
@@ -116,7 +117,7 @@ impl GeoJson {
                     "geometry": {
                         "type": "Polygon",
                         "coordinates": [
-                            polygon.sequence
+                            polygon.path.sequence
                                 .iter()
                                 .map(|coordinates| [ coordinates.x, coordinates.y, coordinates.z ])
                                 .collect::<Vec<_>>()

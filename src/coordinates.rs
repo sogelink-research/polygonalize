@@ -8,7 +8,6 @@ pub struct Coordinates {
     pub z: f64,
 }
 
-/// Oriented vector in the three-dimensional plane.
 #[derive(Clone, Copy, Debug)]
 pub struct CoordinatesVector {
     pub x: f64,
@@ -17,7 +16,6 @@ pub struct CoordinatesVector {
 }
 
 impl PartialEq for Coordinates {
-    /// Compares `self` entry-wise with `other` to verify equality.
     fn eq(&self, other: &Self) -> bool {
         self.x == other.x && self.y == other.y && self.z == other.z
     }
@@ -26,7 +24,6 @@ impl PartialEq for Coordinates {
 impl Eq for Coordinates {}
 
 impl Ord for Coordinates {
-    /// Compares `self` entry-wise with `other`.
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         if self.x < other.x {
             std::cmp::Ordering::Less
@@ -47,14 +44,12 @@ impl Ord for Coordinates {
 }
 
 impl PartialOrd for Coordinates {
-    /// Compares `self` entry-wise with `other`.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl std::hash::Hash for Coordinates {
-    /// Computes the hash of three-dimensional coordinates.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.x.to_bits().hash(state);
         self.y.to_bits().hash(state);
@@ -63,19 +58,7 @@ impl std::hash::Hash for Coordinates {
 }
 
 impl CoordinatesVector {
-    /// Constructs a random vector.
-    pub fn random() -> Self {
-        let mut generator = StdRng::seed_from_u64(0);
-
-        Self {
-            x: generator.gen::<f64>(),
-            y: generator.gen::<f64>(),
-            z: generator.gen::<f64>(),
-        }
-    }
-
-    /// Constructs a vector from an oriented pair of coordinates.
-    pub fn from(connection: &(Coordinates, Coordinates)) -> Self {
+    pub fn unscaled(connection: &(Coordinates, Coordinates)) -> Self {
         Self {
             x: connection.1.x - connection.0.x,
             y: connection.1.y - connection.0.y,
@@ -83,49 +66,93 @@ impl CoordinatesVector {
         }
     }
 
-    /// Computes the euclidean norm of the current vector.
+    pub fn normalized(x: f64, y: f64, z: f64) -> CoordinatesVector {
+        Self { x, y, z }.normalize(f64::EPSILON).unwrap()
+    }
+
+    pub fn random() -> Self {
+        let mut generator = StdRng::seed_from_u64(0);
+
+        Self::normalized(
+            generator.gen::<f64>(),
+            generator.gen::<f64>(),
+            generator.gen::<f64>(),
+        )
+    }
+
+    pub fn from(connection: &(Coordinates, Coordinates)) -> Self {
+        Self::normalized(
+            connection.1.x - connection.0.x,
+            connection.1.y - connection.0.y,
+            connection.1.z - connection.0.z,
+        )
+    }
+
     pub fn norm(&self) -> f64 {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
 
-    /// Multiplies `self` entry-wise by `multiplier`.
-    pub fn rescale(&self, multiplier: f64) -> Self {
-        Self {
+    pub fn flip(&self) -> Self {
+        self.rescale(-1f64)
+    }
+
+    pub fn normalize(&self, epsilon: f64) -> Option<Self> {
+        let norm = self.norm();
+
+        if norm <= epsilon {
+            return None;
+        }
+
+        Some(self.rescale(1f64 / norm))
+    }
+
+    pub fn dot(&self, other: &Self) -> f64 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
+    pub fn normal(&self, other: &Self, epsilon: f64) -> Option<Self> {
+        let result = Self {
+            x: self.y * other.z - self.z * other.y,
+            y: self.z * other.x - self.x * other.z,
+            z: self.x * other.y - self.y * other.x,
+        };
+
+        if result.norm() <= epsilon {
+            None
+        } else {
+            Some(result.rescale(1f64 / result.norm()))
+        }
+    }
+
+    pub fn is_parallel_to(&self, other: &Self, epsilon: f64) -> bool {
+        self.normal(other, epsilon).is_none()
+    }
+
+    fn rescale(&self, multiplier: f64) -> Self {
+        CoordinatesVector {
             x: multiplier * self.x,
             y: multiplier * self.y,
             z: multiplier * self.z,
         }
     }
 
-    /// Returns a normalized version of `self` if it is not the zero vector.
-    pub fn normalize(&self, epsilon: f64) -> Option<Self> {
-        let norm = self.norm();
-        // nothing is returned in case of zero norm meaning less then epsilon
-        if norm <= epsilon {
-            return None;
+    pub fn normal_direction_to(
+        a: &(Coordinates, Coordinates),
+        b: &(Coordinates, Coordinates),
+        epsilon: f64,
+    ) -> Option<Self> {
+        let a = Self::unscaled(a);
+        let b = Self::unscaled(b);
+        let cross = Self {
+            x: a.y * b.z - a.z * b.y,
+            y: a.z * b.x - a.x * b.z,
+            z: a.x * b.y - a.y * b.x,
+        };
+
+        if cross.norm() <= epsilon * a.norm() * b.norm() {
+            None
+        } else {
+            Some(cross.rescale(1f64 / cross.norm()))
         }
-        // otherwise the vector is rescaled by its norm
-        Some(self.rescale(1f64 / norm))
-    }
-
-    /// Computes the dot product with `other`.
-    pub fn dot(&self, other: &Self) -> f64 {
-        self.x * other.x + self.y * other.y + self.z * other.z
-    }
-
-    /// Computes the three-dimensional cross product with `other`.
-    pub fn cross(&self, other: &Self) -> Self {
-        Self {
-            x: self.y * other.z - self.z * other.y,
-            y: self.z * other.x - self.x * other.z,
-            z: self.x * other.y - self.y * other.x,
-        }
-    }
-
-    /// Returns true if parallel to `other` namely their cross product is the zero vector.
-    pub fn is_parallel_to(&self, other: &Self, epsilon: f64) -> bool {
-        // when the norm of the resulting cross product is less then epsilon
-        // then the vectors are considered collinear or parallel
-        self.cross(other).norm() <= epsilon
     }
 }
