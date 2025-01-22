@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION plrust.example()
+CREATE OR REPLACE FUNCTION plrust.rooflines(inputs TEXT[])
     RETURNS SETOF TEXT
     LANGUAGE plrust STRICT
 AS $$
@@ -6,8 +6,38 @@ AS $$
     indexmap = "2.7.1"
     polygonalize = { git = "https://github.com/sogelink-research/polygonalize.git" }
 [code]
+    // call the routine as
+    // once the table is created
+    // select * from plrust.rooflines((select array_agg(linestring) from lines));
     use indexmap::IndexSet; 
     use polygonalize::*;
+    // linestring to pair of coordinates
+    fn from_wkt(line: &str) -> (Coordinates, Coordinates) {
+        let begin = line.find('(').unwrap();
+        let end = line.find(')').unwrap();
+        let comma = line.find(',').unwrap();
+        let a = &line[(begin + 1)..comma]
+            .trim()
+            .split(" ")
+            .collect::<Vec<&str>>();
+        let b = &line[(comma + 1)..end]
+            .trim()
+            .split(" ")
+            .collect::<Vec<&str>>();
+
+        (
+            Coordinates {
+                x: a[0].parse().unwrap(),
+                y: a[1].parse().unwrap(),
+                z: a[2].parse().unwrap(),
+            },
+            Coordinates {
+                x: b[0].parse().unwrap(),
+                y: b[1].parse().unwrap(),
+                z: b[2].parse().unwrap(),
+            },
+        )
+    }
     // well-known text conversion
     trait WellKnownTextConversion {
         fn wkt(&self) -> String;
@@ -31,104 +61,11 @@ AS $$
     // tolerance to compute cross products and determine coplanarity
     const EPSILON: f64 = 0.1;
     // same as before but without a connection forming a plane
-    let lines = vec![
-        (
-            Coordinates {
-                x: 0f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 7f64,
-                y: 0f64,
-                z: 0f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 7f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 10f64,
-                y: 0f64,
-                z: 0f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 0f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 0f64,
-                y: 25f64,
-                z: 15f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 10f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 10f64,
-                y: 25f64,
-                z: 15f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 0f64,
-                y: 25f64,
-                z: 15f64,
-            },
-            Coordinates {
-                x: 10f64,
-                y: 25f64,
-                z: 15f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 0f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 0f64,
-                y: 5f64,
-                z: -5f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 7f64,
-                y: 0f64,
-                z: 0f64,
-            },
-            Coordinates {
-                x: 7f64,
-                y: 5f64,
-                z: -5f64,
-            },
-        ),
-        (
-            Coordinates {
-                x: 0f64,
-                y: 5f64,
-                z: -5f64,
-            },
-            Coordinates {
-                x: 7f64,
-                y: 5f64,
-                z: -5f64,
-            },
-        ),
-    ];
+    // construct lines
+    let lines = inputs
+        .iter()
+        .map(|linestring| from_wkt(linestring.unwrap()))
+        .collect::<Vec<(Coordinates, Coordinates)>>();
     // all paths
     let mut paths = IndexSet::<Path>::new();
     // tries different thresholds
